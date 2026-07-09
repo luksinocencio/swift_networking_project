@@ -64,17 +64,17 @@ extension View {
     }
 }
 
-#Preview("Happy Path") {
-    @State @Previewable var vm = ProductsViewModel(service: DefaultProdcutsService())
+#Preview("API calls") {
+    @State @Previewable var vm = ProductsViewModel()
     ProductsListView(productsVM: vm)
 }
 
-//#Preview("Happy Path") {
-//    @State @Previewable var vm = ProductsViewModel(service: MockProdcutsService())
-//    ProductsListView(productsVM: vm)
-//}
+#Preview("Happy Path") {
+    @State @Previewable var vm = ProductsViewModel(service: MockProductsService())
+    ProductsListView(productsVM: vm)
+}
 
 #Preview("Unhappy Path") {
-    @State @Previewable var vm = ProductsViewModel(service: MockProdcutsService(error: .invalidResponse))
+    @State @Previewable var vm = ProductsViewModel(service: MockProductsService(error: .invalidResponse))
     ProductsListView(productsVM: vm)
 }

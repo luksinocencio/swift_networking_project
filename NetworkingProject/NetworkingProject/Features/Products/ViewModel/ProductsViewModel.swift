@@ -74,6 +74,6 @@ import SwiftUI
 import Playgrounds
 
 #Playground {
-    let vm = ProductsViewModel(service: MockProdcutsService())
+    let vm = ProductsViewModel(service: MockProductsService())
     await vm.initialFetchProducts()
 }

@@ -16,7 +16,7 @@ struct DefaultProdcutsService: ProductsService {
     }
 }
 
-struct MockProdcutsService: ProductsService {
+struct MockProductsService: ProductsService {
     let error: APIError?
     let result: [Product]
     
