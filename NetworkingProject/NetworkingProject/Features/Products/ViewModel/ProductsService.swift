@@ -1,7 +1,7 @@
 import Foundation
 
 protocol ProductsService: Sendable {
-    func fetch(skip: Int, limit: Int) async throws -> [Product]
+    func fetch(skip: Int, limit: Int) async throws -> ProductResponse
 }
 
 struct DefaultProdcutsService: ProductsService {
@@ -11,8 +11,8 @@ struct DefaultProdcutsService: ProductsService {
         self.client = APIClient(baseURL: baseURL)
     }
     
-    func fetch(skip: Int, limit: Int) async throws -> [Product] {
-        return try await client.fetch(endpoint: ProductsEndpoint(limit: limit, skip: skip)).products
+    func fetch(skip: Int, limit: Int) async throws -> ProductResponse {
+        return try await client.fetch(endpoint: ProductsEndpoint(limit: limit, skip: skip))
     }
 }
 
@@ -25,11 +25,11 @@ struct MockProdcutsService: ProductsService {
         self.result = result
     }
     
-    func fetch(skip: Int, limit: Int) async throws -> [Product] {
+    func fetch(skip: Int, limit: Int) async throws -> ProductResponse {
         if let error {
             throw error
         } else {
-            result
+            ProductResponse(products: result, total: 100, skip: 0, limit: result.count)
         }
     }
 }

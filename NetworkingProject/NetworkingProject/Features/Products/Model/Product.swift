@@ -33,4 +33,11 @@ struct ProductResponse: Decodable {
     let total: Int
     let skip: Int
     let limit: Int
+    
+    init(products: [Product], total: Int, skip: Int, limit: Int) {
+        self.products = products
+        self.total = total
+        self.skip = skip
+        self.limit = limit
+    }
 }
