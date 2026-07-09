@@ -1,9 +1,35 @@
 import SwiftUI
 
 @Observable class ProductsViewModel {
-    var products: [Product] = []
-    var errorMessage: String?
-    var isLoading: Bool = false
+    
+    enum LoadingState {
+        case initial
+        case loading
+        case loadingMore
+        case loaded
+        case initialLoadError(String)
+        case loadMoreError(String)
+        
+        var canLoad: Bool {
+            switch self {
+            case .initial:
+                true
+            case .loading:
+                false
+            case .loadingMore:
+                false
+            case .loaded:
+                true
+            case .initialLoadError(let string):
+                true
+            case .loadMoreError(let string):
+                true
+            }
+        }
+    }
+    
+    private(set) var products: [Product] = []
+    var loadingState: LoadingState = .initial
     var totals: Int?
     
     let service: ProductsService
@@ -15,32 +41,32 @@ import SwiftUI
     func initialFetchProducts() async {
         guard products.isEmpty else { return }
         
-        isLoading = true
-        defer { isLoading = false }
+        loadingState = .loading
         
         do {
-            try await Task.sleep(for: .milliseconds(500))
+//            try await Task.sleep(for: .milliseconds(500))
             let response = try await service.fetch(skip: 0, limit: 10)
             self.products = response.products
             self.totals = response.total
+            self.loadingState = .loaded
         } catch {
-            self.errorMessage = error.localizedDescription
+            self.loadingState = .initialLoadError(error.localizedDescription)
         }
     }
     
     func fetchMore() async {
-        guard totals != products.count, !isLoading else { return }
+        guard totals != products.count, loadingState.canLoad else { return }
         
-        isLoading = true
-        defer { isLoading = false }
+        loadingState = .loadingMore
         
         do {
-            try await Task.sleep(for: .seconds(1))
+//            try await Task.sleep(for: .seconds(1))
             let response = try await service.fetch(skip: products.count, limit: 10)
             self.totals = response.total
             self.products.append(contentsOf: response.products)
+            self.loadingState = .loaded
         } catch {
-            self.errorMessage = error.localizedDescription
+            self.loadingState = .loadMoreError(error.localizedDescription)
         }
     }
 }

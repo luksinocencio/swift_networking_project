@@ -9,15 +9,26 @@ struct ProductsListView: View {
                 ProductRow(product: product)
             }
         }
-        .overlay(content: {
-            if let error = productsVM.errorMessage {
-                Text(error)
-                    .foregroundColor(.red)
-            }
-            if productsVM.isLoading {
+        .overlay(alignment:.bottom, content: {
+            switch productsVM.loadingState {
+            case .initial, .loading:
                 ProgressView()
                     .controlSize(.large)
+                    .frame(maxHeight: .infinity)
+            case .loaded:
+                EmptyView()
+            case .loadingMore:
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+            case .initialLoadError(let error):
+                Text(error)
+                    .foregroundColor(.red)
+            case .loadMoreError(let error):
+                EmptyView()
             }
+            
+            
         })
         .task {
             await productsVM.initialFetchProducts()
@@ -30,16 +41,7 @@ struct ProductsListView: View {
     }
 }
 
-struct ProductRow: View {
-    let product: Product
-    
-    var body: some View {
-        HStack {
-            Text(product.id.description)
-            Text(product.title)
-        }.padding(40)
-    }
-}
+
 
 extension View {
     func onTriggerLoadAt(triggerDistance: CGFloat, of transform: @escaping () -> Void) -> some View {
