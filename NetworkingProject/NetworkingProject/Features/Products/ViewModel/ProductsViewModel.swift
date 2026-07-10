@@ -20,19 +20,23 @@ import SwiftUI
                 false
             case .loaded:
                 true
-            case .initialLoadError(let string):
+            case .initialLoadError(_):
                 true
-            case .loadMoreError(let string):
+            case .loadMoreError(_):
                 true
             }
         }
     }
     
     private(set) var products: [Product] = []
-    var loadingState: LoadingState = .initial
-    var totals: Int?
+    private(set) var loadingState: LoadingState = .initial
     
+    private var previousSearch: String? = nil
+    
+    var totals: Int?
     let service: ProductsService
+    
+    private let limits: Int = 20
     
     init(service:ProductsService = DefaultProdcutsService()) {
         self.service = service
@@ -44,8 +48,7 @@ import SwiftUI
         loadingState = .loading
         
         do {
-//            try await Task.sleep(for: .milliseconds(500))
-            let response = try await service.fetch(skip: 0, limit: 10)
+            let response = try await service.fetch(skip: 0, limit: limits, searchQuery: nil)
             self.products = response.products
             self.totals = response.total
             self.loadingState = .loaded
@@ -60,13 +63,31 @@ import SwiftUI
         loadingState = .loadingMore
         
         do {
-//            try await Task.sleep(for: .seconds(1))
-            let response = try await service.fetch(skip: products.count, limit: 10)
+            let response = try await service.fetch(skip: products.count, limit: 10, searchQuery: previousSearch)
             self.totals = response.total
             self.products.append(contentsOf: response.products)
             self.loadingState = .loaded
         } catch {
             self.loadingState = .loadMoreError(error.localizedDescription)
+        }
+    }
+    
+    func fetch(for searchQuery: String) async {
+        guard (previousSearch ?? "") != searchQuery else { return }
+        
+        loadingState = .loading
+        products = []
+        
+        do {
+            let response = try await service.fetch(skip: 0, limit: limits, searchQuery: searchQuery)
+            self.products = response.products
+            self.totals = response.total
+            self.loadingState = .loaded
+            self.previousSearch = searchQuery
+        } catch APIError.taskCancellation {
+            //ignore
+        } catch {
+            self.loadingState = .initialLoadError(error.localizedDescription)
         }
     }
 }

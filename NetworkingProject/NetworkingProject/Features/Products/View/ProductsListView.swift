@@ -2,42 +2,54 @@ import SwiftUI
 
 struct ProductsListView: View {
     let productsVM: ProductsViewModel
+    @State private var searchText = ""
     
     var body: some View {
-        List {
-            ForEach(productsVM.products) { product in
-                ProductRow(product: product)
+        NavigationStack {
+            List {
+                ForEach(productsVM.products) { product in
+                    ProductRow(product: product)
+                }
             }
+            .listStyle(.plain)
+            .navigationTitle("Products")
+            .searchable(text: $searchText)
+            .overlay(alignment:.bottom, content: {
+                switch productsVM.loadingState {
+                case .initial, .loading:
+                    ProgressView()
+                        .controlSize(.large)
+                        .frame(maxHeight: .infinity)
+                case .loaded:
+                    if productsVM.products.isEmpty {
+                        ContentUnavailableView("Nothing Found", systemImage: "basket")
+                    }
+                case .loadingMore:
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(maxHeight: .infinity, alignment: .bottom)
+                case .initialLoadError(let error):
+                    Text(error)
+                        .foregroundColor(.red)
+                case .loadMoreError(_):
+                    EmptyView()
+                }
+            })
+            .task(id: searchText, {
+                try? await Task.sleep(for: .seconds(1))
+                guard !Task.isCancelled else { return }
+                
+                await productsVM.fetch(for: searchText)
+            })
+            .task {
+                await productsVM.initialFetchProducts()
+            }
+            .onTriggerLoadAt(triggerDistance: 300, of: {
+                Task {
+                    await productsVM.fetchMore()
+                }
+            })
         }
-        .overlay(alignment:.bottom, content: {
-            switch productsVM.loadingState {
-            case .initial, .loading:
-                ProgressView()
-                    .controlSize(.large)
-                    .frame(maxHeight: .infinity)
-            case .loaded:
-                EmptyView()
-            case .loadingMore:
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-            case .initialLoadError(let error):
-                Text(error)
-                    .foregroundColor(.red)
-            case .loadMoreError(let error):
-                EmptyView()
-            }
-            
-            
-        })
-        .task {
-            await productsVM.initialFetchProducts()
-        }
-        .onTriggerLoadAt(triggerDistance: 300, of: {
-            Task {
-                await productsVM.fetchMore()
-            }
-        })
     }
 }
 
