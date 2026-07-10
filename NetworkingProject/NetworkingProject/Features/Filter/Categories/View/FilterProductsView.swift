@@ -1,35 +1,47 @@
 import SwiftUI
 
 struct FilterProductsView: View {
+    
     @State private var categoryViewModel = CategoriesViewModel()
-    @State private var sortOrder = SortField.defaultSortField
-    @State private var selectedCategory: String? = ""
+    
+    @Binding var sortOrder: SortField?
+    @Binding var selectedCategory: String?
     
     @Environment(\.dismiss) var dismiss
-    
     
     var body: some View {
         NavigationStack {
             List {
-                Picker("Sort By", selection: $sortOrder) {
+                
+                Picker("Sort By",
+                       selection: $sortOrder) {
                     ForEach(SortField.allCases) {
                         Text($0.displayName)
+                            .tag($0)
                     }
-                }.pickerStyle(.inline)
+                }
+                       .pickerStyle(.inline)
                 
-                Picker("Categories", selection: $selectedCategory) {
+                
+                Picker("Categories",
+                       selection: $selectedCategory) {
                     ForEach(categoryViewModel.categories, id: \.self) { category in
                         Text(category.capitalized)
+                            .tag(category)
                     }
-                }.pickerStyle(.inline)
+                }
+                       .pickerStyle(.inline)
+                //TODO: show loading / error feedback for categories
             }
-            .navigationBarTitle("Filter Products", displayMode: .inline)
-            .toolbar(content: {
+            .navigationTitle("Filter Products")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {
                         dismiss()
                     }
                 }
+                
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Clear") {
                         sortOrder = SortField.defaultSortField
@@ -37,14 +49,18 @@ struct FilterProductsView: View {
                         dismiss()
                     }
                 }
-            })
-            .task {
-                await categoryViewModel.fetchCategories()
             }
+        }
+        .task {
+            await categoryViewModel.fetchCategories()
         }
     }
 }
 
 #Preview {
-    FilterProductsView()
+    @State @Previewable var sortOrder: SortField? = .discount
+    @State @Previewable var selectedCategory: String? = nil
+    
+    FilterProductsView(sortOrder: $sortOrder,
+                       selectedCategory: $selectedCategory)
 }

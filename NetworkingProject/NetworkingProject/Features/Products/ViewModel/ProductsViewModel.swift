@@ -1,8 +1,10 @@
 import SwiftUI
 
+import Foundation
+
 @Observable class ProductsViewModel {
     
-    enum LoadingState {
+    enum LoadingState: Equatable {
         case initial
         case loading
         case loadingMore
@@ -26,75 +28,147 @@ import SwiftUI
                 true
             }
         }
+        
+        var isCurrentlyLoading: Bool {
+            switch self {
+            case .loading, .loadingMore: true
+            default: false
+            }
+        }
+    }
+    
+    enum FetchIntents {
+        case initial    // onAppear - load if empty
+        case loadMore   // scrolling - load next page
+        case search     // typing - debounced - reload
+        case filterChanged // sheet dismissed - reload
+        case retry         // error button - reload
+        
+        var shouldDebounce: Bool {
+            self == .search
+        }
+        
+        var resetProducts: Bool {
+            switch self {
+            case  .loadMore: return false
+            case .initial, .search, .filterChanged, .retry: return true
+            }
+        }
     }
     
     private(set) var products: [Product] = []
     private(set) var loadingState: LoadingState = .initial
     
-    private var previousSearch: String? = nil
+    var configuration: ProductsEndpoint.Configuration = .init()
+    private var previousConfiguration: ProductsEndpoint.Configuration? = nil
     
-    var totals: Int?
-    let service: ProductsService
+    private var totalProductCount: Int? = nil
+    private let service: ProductsService
     
-    private let limits: Int = 20
+    private let pageSize: Int = 20
+    private var task: Task<(), Error>? = nil
     
-    init(service:ProductsService = DefaultProdcutsService()) {
+    init(service: ProductsService = DefaultProductsService()) {
         self.service = service
     }
     
-    func initialFetchProducts() async {
-        guard products.isEmpty else { return }
+    // Explicit @MainActor required to silence compiler warning.
+    // This method is always called from the UI (already on MainActor),
+    // but Swift's strict concurrency checking in Swift 6 mode requires
+    // the annotation to verify isolation at Task boundaries.
+    @MainActor
+    func load(for intent: FetchIntents) {
+        guard canLoad(for: intent) else { return }
         
-        loadingState = .loading
+        self.task?.cancel()
         
-        do {
-            let response = try await service.fetch(skip: 0, limit: limits, searchQuery: nil)
-            self.products = response.products
-            self.totals = response.total
-            self.loadingState = .loaded
-        } catch {
-            self.loadingState = .initialLoadError(error.localizedDescription)
+        self.task = Task {
+            await self.performLoad(for: intent)
         }
     }
     
-    func fetchMore() async {
-        guard totals != products.count, loadingState.canLoad else { return }
-        
-        loadingState = .loadingMore
-        
-        do {
-            let response = try await service.fetch(skip: products.count, limit: 10, searchQuery: previousSearch)
-            self.totals = response.total
-            self.products.append(contentsOf: response.products)
-            self.loadingState = .loaded
-        } catch {
-            self.loadingState = .loadMoreError(error.localizedDescription)
-        }
+    func stopFetch() {
+        task?.cancel()
+        loadingState = products.isEmpty ? .initial : .loaded
     }
     
-    func fetch(for searchQuery: String) async {
-        guard (previousSearch ?? "") != searchQuery else { return }
+    private func performLoad(for intent: FetchIntents) async {
         
-        loadingState = .loading
-        products = []
+        // Skip debounce when search is cleared so the list resets immediately
+        if intent.shouldDebounce, !configuration.searchText.isEmpty {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+        }
+        
+        loadingState = intent.resetProducts ? .loading : .loadingMore
         
         do {
-            let response = try await service.fetch(skip: 0, limit: limits, searchQuery: searchQuery)
-            self.products = response.products
-            self.totals = response.total
+            
+            print("load started - \(intent)")
+            let skip = intent.resetProducts ? 0 : products.count
+            let response = try await service.fetch(skip: skip,
+                                                   limit: pageSize,
+                                                   configuration: configuration)
+            
+            guard !Task.isCancelled else { return }
+            
+            if intent.resetProducts {
+                self.products = response.products
+            } else {
+                self.products.append(contentsOf: response.products)
+            }
+            self.totalProductCount = response.total
+            print("load ended - \(intent)")
             self.loadingState = .loaded
-            self.previousSearch = searchQuery
+            self.previousConfiguration = configuration
         } catch APIError.taskCancellation {
-            //ignore
+            // ignore task cancellation errors thrown from URLSession
+            return
         } catch {
-            self.loadingState = .initialLoadError(error.localizedDescription)
+            if loadingState == .loading {
+                self.loadingState = .initialLoadError(error.localizedDescription)
+            } else {
+                self.loadingState = .loadMoreError(error.localizedDescription)
+            }
         }
+    }
+    
+    private func canLoad(for intent: FetchIntents) -> Bool {
+        switch intent {
+        case .initial:
+            //  if you successfully load products and then the view calls onAppear again (e.g., tab switching), it won't reload.
+            products.isEmpty && !loadingState.isCurrentlyLoading
+        case .loadMore:
+            !loadingState.isCurrentlyLoading  && hasMoreProductsToLoad()
+        case .search, .filterChanged:
+            // prevent fetch for same filter settings again, but start fetch even if we are already loading
+            previousConfiguration != configuration
+        case .retry:
+            true
+        }
+    }
+    
+    func hasMoreProductsToLoad() -> Bool {
+        guard let totalProductCount else { return false }
+        return products.count < totalProductCount
     }
 }
 
 import Playgrounds
 
-#Playground {
-    let vm = ProductsViewModel(service: MockProductsService())
-    await vm.initialFetchProducts()
+import Playgrounds
+
+#Playground("initial") {
+    let vm = ProductsViewModel()
+    
+    await vm.load(for: .initial)
+    
+    await vm.load(for: .loadMore)
+    
+    print(vm.loadingState)
+    
+    print(vm.products.count)
+    for product in vm.products {
+        print(product.id)
+    }
 }

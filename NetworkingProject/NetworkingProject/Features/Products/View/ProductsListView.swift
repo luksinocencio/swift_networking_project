@@ -1,8 +1,9 @@
 import SwiftUI
 
 struct ProductsListView: View {
-    let productsVM: ProductsViewModel
-    @State private var searchText = ""
+    
+    @Bindable var productsVM: ProductsViewModel
+    
     @State private var filterSheetIsOpen = false
     
     var body: some View {
@@ -15,48 +16,66 @@ struct ProductsListView: View {
             .listStyle(.plain)
             .navigationTitle("Products")
             .toolbar(content: {
-                Toggle(isOn: $filterSheetIsOpen) {
+                Button {
+                    filterSheetIsOpen.toggle()
+                } label: {
                     Label("Show Filter", systemImage: "slider.horizontal.3")
                 }
             })
-            .sheet(isPresented: $filterSheetIsOpen, content: {
-                FilterProductsView()
+            .sheet(isPresented: $filterSheetIsOpen, onDismiss: {
+                print("start the new fetch if something changed")
+                productsVM.load(for: .filterChanged)
+            }, content: {
+                FilterProductsView(sortOrder: $productsVM.configuration.sortField, selectedCategory: $productsVM.configuration.category)
             })
-            .searchable(text: $searchText)
-            .overlay(alignment:.bottom, content: {
+            
+            .searchable(text: $productsVM.configuration.searchText)
+            .overlay(alignment: .bottom, content: {
                 switch productsVM.loadingState {
                 case .initial, .loading:
                     ProgressView()
                         .controlSize(.large)
                         .frame(maxHeight: .infinity)
+                    
                 case .loaded:
                     if productsVM.products.isEmpty {
                         ContentUnavailableView("Nothing Found", systemImage: "basket")
                     }
+                    
                 case .loadingMore:
                     ProgressView()
-                        .controlSize(.small)
-                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .controlSize(.extraLarge)
+                        .padding()
+                    
                 case .initialLoadError(let error):
+                    VStack {
+                        Text(error)
+                            .foregroundColor(.red)
+                            .font(.title)
+                        
+                        Button("Retry") {
+                            productsVM.load(for: .retry)
+                        }
+                    }
+                    .padding()
+                    .frame(maxHeight: .infinity)
+                case .loadMoreError(let error):
+                    // smaller overlay
                     Text(error)
                         .foregroundColor(.red)
-                case .loadMoreError(_):
-                    EmptyView()
+                        .padding()
+                        .background(.thinMaterial).cornerRadius(5).shadow(radius: 5)
                 }
-            })
-            .task(id: searchText, {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
                 
-                await productsVM.fetch(for: searchText)
             })
-            .task {
-                await productsVM.initialFetchProducts()
+            .onChange(of: productsVM.configuration.searchText, { oldValue, newValue in
+                productsVM.load(for: .search)
+            })
+            .onAppear {
+                productsVM.load(for: .initial)
             }
             .onTriggerLoadAt(triggerDistance: 300, of: {
-                Task {
-                    await productsVM.fetchMore()
-                }
+                productsVM.load(for: .loadMore)
             })
         }
     }
